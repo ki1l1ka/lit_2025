@@ -6,68 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 namespace textquest;
 
 class Program {
-    static void Main()
-    {
-        // Создание мира
-            // создание локаций
-            Location hall = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}, {"Дверь 2", room_2}, {"Дверь 3", room_3}, {"Дверь 4", room_4}}, false);
-            // Location reception 
-            Location room_1 = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}}, false);
-            Location room_2 = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}}, false);
-            Location room_3 = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}}, false);
-            Location room_4 = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}}, false); 
-            Location basement = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}}, false);
-            Location corridor = new Location(10, "Вы оказались в освещённом холле. В холле вы видите ресепшен и одиноко стоящего уборщика.", new Dictionary<string, Location> {{"Дверь 1", room_1}}, false);
-            // создание предметов и npc
-            Entity hostess = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            Entity guest_1 = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            Entity guest_2 = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            Entity guest_3 = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            Entity guest_4 = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            Entity guest_5 = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            
-            Entity generator = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-            Entity chest = new Entity("Хостесс", "...", new Dictionary<string, Item> {}, new string[] {"реплика 1", "реплика 2"});
-
-            ActionObject torch = new ActionObject("Фонарик", "...");
-            ActionObject key = new ActionObject("Фонарик", "...");
-            ActionObject fuse = new ActionObject("Фонарик", "...");
-
-            Item artefact_1 = new Item();
-            Item artefact_2 = new Item();
-            Item artefact_3 = new Item();
-            // создание эффектов
-            // Эффекты для предметов
-            var getTorchEffect = new AddItemEffect("фонарик", new Item(2));
-            var getKeyEffect = new AddItemEffect("ключ", new Item(1));
-            var getFuseEffect = new AddItemEffect("предохранитель", new Item(1));
-
-            // Сюжетные эффекты
-            var repairGeneratorEffect = new SetFlagEffect("generator_fixed", true); // Нужно создать этот класс или менять флаг напрямую
-            var winEffect = new WinEffect();
-
-            // Создание условий
-            var hasKey = new HasItemCondition("ключ");
-            var hasFuse = new HasItemCondition("предохранитель");
-            var generatorFixed = new IsFlagCondition("generator_fixed");
-            var isDark = new NotCondition(generatorFixed);
-
-        string input = Console.ReadLine().ToLower().Split(' ');
-        CommandBase command = input[0] switch {
-        "go" => new MoveCommand(input[1]),
-        "take" or "interact" => new InteractCommand(input[1]),
-        "use" => new UseItemCommand(input[1]),
-        "inv" => new InventoryCommand(),
-        _ => null
-};
-
-command?.executeCommand(state);
-
-    }
-}
-
-
-public static void Main()
+    public static void Main()
 {
     while (true) // Цикл перезапуска игры
     {
@@ -138,7 +77,7 @@ public static void Main()
                 double damage = state.Flags["luck"] ? 10 : 20;
                 if (!state.Player.Inventory.ContainsKey("фонарик")) {
                     state.Player.Health -= damage;
-                    Console.WriteLine($"Тьма ранит вас! -{damage} HP");
+                    Console.WriteLine($"Тьма наносит урон - {damage} HP");
                 }
             }
 
@@ -155,6 +94,12 @@ public static void Main()
                 _ => null
             };
             command?.executeCommand(state);
+            // Внутри while
+
+            // Внутри while сразу после выполнения команды
+            foreach (var obj in state.CurrentLocation.Objects) {
+                obj.update(state); // Полиморфизм: запустится только у генератора
+            }
 
             // Проверка конца коридора
             if (state.CurrentLocation == corridor && input[0] == "open") state.Flags["restart"] = true;
@@ -162,4 +107,5 @@ public static void Main()
 
         Console.WriteLine("\n--- ИГРА ПЕРЕЗАГРУЖАЕТСЯ ---");
     }
+}
 }

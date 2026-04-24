@@ -38,7 +38,6 @@ public abstract class GameEventBase
     public virtual void tick(GameState state) {
     if (this.condition.condition(state)) {
         this.effect.applyEffect(state);
-        // Если событие одноразовое, здесь можно выставить флаг "IsFinished"
     }
 }
 
@@ -50,6 +49,7 @@ public abstract class GameObject: iInteractable {
         this.name = name;
         this.description = description;
     }
+    public virtual void update(GameState state) {}
     public string Name {get{return this.name;}}
     public string Description {get{return this.description;}}
     public interaction(){}
@@ -111,7 +111,7 @@ public class Location {
 public class Entity: GameObject {
     private Dictionary<string, Item> inventory;
     private string[] phrases;
-    public Entity(string name, string description, string[] inventory, string[] phrases) {
+    public Entity(string name, string description, Dictionary<string, Item> inventory, string[] phrases) {
         this.name = name;
         this.description = description; 
         this.inventory = inventory;
@@ -211,6 +211,62 @@ public class Gamer {
         set{this.inventory = value;}
     }
 }
+public class GeneratorObject : GameObject 
+{
+    private int _turnsToStart = -1; 
+    private iCondition _fastStartCond;
+
+    public GeneratorObject(string name, string desc, iCondition fastStart) : base(name, desc) 
+    {
+        _fastStartCond = fastStart;
+    }
+
+    public override void interact(GameState state) 
+    {
+        if (state.Flags["generator_on"]) {
+            Console.WriteLine("Генератор уже работает.");
+            return;
+        }
+
+        if (_fastStartCond.condition(state)) {
+            state.Flags["generator_on"] = true;
+            state.Flags["electricity"] = true;
+            Console.WriteLine("Благодаря инструментам вы мгновенно чините генератор! Свет включен.");
+        } else if (state.Player.Inventory.ContainsKey("рычаг")) {
+            _turnsToStart = 2;
+            Console.WriteLine("Вы дернули рычаг, но без инструментов генератору нужно время, чтобы прогреться...");
+        } else {
+            Console.WriteLine("Вам нужен рычаг, чтобы запустить это.");
+        }
+    }
+
+    public void tickGenerator(GameState state) 
+    {
+        if (_turnsToStart > 0) {
+            _turnsToStart--;
+            Console.WriteLine($"Генератор гудит... осталось тиков: {_turnsToStart}");
+            
+            if (_turnsToStart == 0) {
+                state.Flags["generator_on"] = true;
+                state.Flags["electricity"] = true;
+                Console.WriteLine("Генератор наконец-то затарахтел! Питание восстановлено.");
+            }
+        }
+    }
+     public override void update(GameState state) {
+        if (_turnsToStart > 0) {
+            _turnsToStart--;
+            Console.WriteLine($"Генератор заводится осталось ещё немного: {_turnsToStart}");
+            
+            if (_turnsToStart == 0) {
+                state.Flags["generator_on"] = true;
+                state.Flags["electricity"] = true;
+                Console.WriteLine("Генератор запустился! Питание восстановлено.");
+            }
+        }
+    }
+}
+
 
 //Команды
 public class GoToCommand: CommandBase {
@@ -373,7 +429,7 @@ public class TemporaryDamageEffect: EffectBase{
         this.time = time;
     }
     public override applyEffect(GameState state){
-        //
+        
     }
 }
 
@@ -398,6 +454,21 @@ public class SanityUpEffect: EffectBase{
         state.Player.Sanity = state.Player.Sanity + this.amount;
     }
 }
+public class SetFlagEffect : EffectBase {
+    private string f; private bool v;
+    public SetFlagEffect(string f, bool v) { 
+        this.f = f; 
+        this.v = v; }
+    public override void ApplyEffect(GameState state) => state.Flags[f] = v;
+}
+
+public class CombinedEffect : iEffect {
+    private List<iEffect> effects;
+    public CombinedEffect(List<iEffect> e) => effects = e;
+    public void applyEffect(GameState state) { 
+        foreach(var e in effects) e.applyEffect(state);}
+}
+
 // события
 public class RandomSanityEvent: GameEventBase {
     private EffectBase effect;
@@ -462,38 +533,29 @@ public class RandomSanityEvent: GameEventBase {
 //         set{this.people = value;}
 //     }
 // }
-
-// Дополнение к условиям
 public class IsAtLocationCondition : ConditionBase {
     private string _locationName;
     public IsAtLocationCondition(string locationName) { _locationName = locationName; }
     public override bool condition(GameState state) { return state.CurrentLocation == _locationName; }
 }
-
-// Реализация события (исправлено: запуск эффекта через run)
 public class WorldEvent : GameEventBase {
     private iEffect _effect;
     public WorldEvent(string name, iCondition cond, iEffect eff) : base(name, cond, eff) {
         _effect = eff;
     }
-    // В базовом классе вызывается run, реализуем его
     public void run(GameState state) {
         _effect.applyEffect(state);
     }
     public override void tick(GameState state) {
-        // Если условие верно, применяем эффект
         if (base.condition_ref.condition(state)) {
             this.run(state);
         }
     }
 }
-
-// Дополнение к эффектам
-
 public class WinEffect : EffectBase {
     public override void applyEffect(GameState state) {
         state.Flags["Escaped"] = true;
-        Console.WriteLine("ПОЗДРАВЛЯЕМ! Вы выбрались из отеля!");
+        Console.WriteLine("Вы снова здесь.");
     }
 }
 // команды
@@ -503,7 +565,6 @@ public class MoveCommand : CommandBase {
     public MoveCommand(string destinationId) => _destinationId = destinationId;
 
     public override void executeCommand(GameState state) {
-        // Проверяем, есть ли такой выход у текущей локации
         if (state.CurrentLocation.Exits.ContainsKey(_destinationId)) {
             state.CurrentLocation = state.Map[_destinationId];
             Console.WriteLine($"Вы перешли в: {state.CurrentLocation.Name}");
@@ -521,7 +582,7 @@ public class InteractCommand : CommandBase {
     public override void executeCommand(GameState state) {
         var obj = state.CurrentLocation.Objects.Find(o => o.Name.ToLower() == _targetName.ToLower());
         if (obj != null) {
-            obj.interact(state); // Объект сам применит свои эффекты
+            obj.interact(state);
         } else {
             Console.WriteLine("Я не вижу здесь этого.");
         }
@@ -535,7 +596,6 @@ public class UseItemCommand : CommandBase {
 
     public override void executeCommand(GameState state) {
         if (state.Player.Inventory.TryGetValue(_itemName, out Item item)) {
-            // Если у предмета есть эффект (например, лечебный), применяем его
             item.interact(state); 
         } else {
             Console.WriteLine("У вас нет этого предмета.");
@@ -556,3 +616,86 @@ public class InventoryCommand : CommandBase {
         }
     }
 }
+class Program {
+    public static void Main()
+{
+    while (true)
+    {
+        // создание флагов
+        var flags = new Dictionary<string, bool> {
+            { "quest_clean", false }, { "quest_seals", false },
+            { "room1_clean", false }, { "room2_clean", false }, { "room3_clean", false },
+            { "generator_on", false }, { "electricity", true }, { "luck", false }, { "restart", false }
+        };
+        var player = new Gamer(new Dictionary<string, Item>(), 100, 100, 100, 100);
+        var map = new Dictionary<string, Location>();
+
+        // создание эффектов
+        var getSealEffect = new AddItemEffect("печать", new Item(1));
+        var getToolsEffect = new AddItemEffect("инструменты", new Item(2));
+        var getLeverEffect = new AddItemEffect("рычаг", new Item(1));
+        var darknessSequence = new CombinedEffect(new List<iEffect> {
+            new SetFlagEffect("electricity", false),
+            new SanityDownEffect(10) 
+        });
+
+        // создание локаций
+        Location hall = new Location(10, new[] { "Вы в холле. Здесь Хостесс и Уборщик." }, new Dictionary<string, GameObject>(), false);
+        Location r1 = new Location(10, new[] { "Комната 1. Пыльное кресло и сундук." }, new Dictionary<string, GameObject>(), false);
+        Location r2 = new Location(10, new[] { "Комната 2. Шкаф и сундук." }, new Dictionary<string, GameObject>(), false);
+        Location r3 = new Location(10, new[] { "Комната 3. Зеркало и сундук." }, new Dictionary<string, GameObject>(), false);
+        Location basement = new Location(5, new[] { "Сырой подвал с генератором." }, new Dictionary<string, GameObject>(), true);
+        Location corridor = new Location(0, new[] { "Бесконечный темный коридор." }, new Dictionary<string, GameObject>(), true);
+
+        // срздание объектов
+        r1.Objects.Add(new ActionObject("кресло", "Убрать кресло", "Вы убрали кресло и нашли инструменты!", 
+            new CombinedEffect(new List<iEffect> { getToolsEffect, new SetFlagEffect("room1_clean", true) })));
+        r1.Objects.Add(new ActionObject("сундук", "Открыть сундук", "Вы нашли первую печать.", getSealEffect));
+        r3.Objects.Add(new ActionObject("сундук", "Открыть сундук", "Вы нашли печать и рычаг!", 
+            new CombinedEffect(new List<iEffect> { getSealEffect, getLeverEffect })));
+        var genLogic = new GeneratorObject("генератор", "Старый агрегат", new AndCondition(new HasItemCondition("рычаг"), new HasItemCondition("инструменты")));
+        basement.Objects.Add(genLogic);
+
+        hall.Exits = new Dictionary<string, string> { {"1", "r1"}, {"2", "r2"}, {"3", "r3"}, {"вниз", "basement"}, {"выход", "corridor"} };
+        r1.Exits.Add("назад", "hall"); r2.Exits.Add("назад", "hall"); r3.Exits.Add("назад", "hall");
+        basement.Exits.Add("вверх", "hall");
+
+        map.Add("hall", hall); map.Add("r1", r1); map.Add("r2", r2); map.Add("r3", r3); 
+        map.Add("basement", basement); map.Add("corridor", corridor);
+
+        var state = new GameState(0, 1, 12, new string[]{"hall"}, hall, flags) { Player = player, Map = map };
+        while (state.Player.Health > 0 && state.Player.Sanity > 0 && !state.Flags["restart"])
+        {
+            Console.WriteLine($"\nHP: {state.Player.Health} | Sanity: {state.Player.Sanity} | Локация: {state.CurrentLocation.Name}");
+            Console.WriteLine(string.Join(" ", state.CurrentLocation.Description));
+            if (state.Flags["room1_clean"] && state.Flags["room2_clean"] && state.Flags["room3_clean"])
+                state.Flags["luck"] = true;
+            if (state.CurrentLocation == corridor) {
+                double damage = state.Flags["luck"] ? 10 : 20;
+                if (!state.Player.Inventory.ContainsKey("фонарик")) {
+                    state.Player.Health -= damage;
+                    Console.WriteLine($"Тьма наносит урон - {damage} HP");
+                }
+            }
+            // реализация команд
+            Console.Write("> ");
+            var input = Console.ReadLine().ToLower().Split(' ');
+            if (input[0] == "exit") break;
+            CommandBase command = input[0] switch {
+                "go" => new MoveCommand(input[1]),
+                "take" or "use" => new InteractCommand(input[1]),
+                "inv" => new InventoryCommand(),
+                _ => null
+            };
+            command?.executeCommand(state);
+            foreach (var obj in state.CurrentLocation.Objects) {
+                obj.update(state);
+            }
+            if (state.CurrentLocation == corridor && input[0] == "open") state.Flags["restart"] = true;
+        }
+
+        Console.WriteLine("\n--- ИГРА ПЕРЕЗАГРУЖАЕТСЯ ---");
+    }
+}
+}
+
