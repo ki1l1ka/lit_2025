@@ -1,50 +1,50 @@
-namespace textquest;
+using System.Data;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.VisualBasic;
 // интерфейсы
-interface iCommand {
+interface ICommand {
     void executeCommand(GameState state);
 }
-interface iInteractable {
-    void interact(GameState state);
+interface IInteractable {
+    void Interact(GameState state);
 }
-interface iCondition{ 
+interface ICondition{ 
     bool condition(GameState state);
 }
-interface iEffect {
-    void applyEffect(GameState state);
+interface IEffect {
+    void ApplyEffect(GameState state);
 }
 // абстрактные классы
-public abstract class CommandBase: iCommand {
+public abstract class CommandBase: ICommand {
     string name;
     string description;
     public abstract void executeCommand(GameState state);
 }
-public abstract class ConditionBase: iCondition{
+public abstract class ConditionBase: ICondition{
     public abstract bool condition(GameState state);
 }
-public abstract class EffectBase: iEffect {
-    public abstract void applyEffect(GameState state);
+public abstract class EffectBase: IEffect {
+    public abstract void ApplyEffect(GameState state);
 }
 public abstract class GameEventBase
 {
     private string name;
-    private iCondition condition;
-    private iEffect effect;
+    private ICondition condition;
+    private IEffect effect;
 
-    public GameEventBase(string name, iCondition condition, iEffect effect) {
+    public GameEventBase(string name, ICondition condition, IEffect effect) {
         this.name = name;
         this.condition = condition;
         this.effect = effect;
     }
     public virtual void tick(GameState state) {
     if (this.condition.condition(state)) {
-        this.effect.applyEffect(state);
-    }
+        this.effect.ApplyEffect(state);}}
+    public ICondition Condition{get{return this.condition;}}
 }
-
-}
-public abstract class GameObject: iInteractable {
-    private string name;
-    private string description;
+public abstract class GameObject: IInteractable {
+    protected string name;
+    protected string description;
     public GameObject(string name, string description){
         this.name = name;
         this.description = description;
@@ -52,9 +52,15 @@ public abstract class GameObject: iInteractable {
     public virtual void update(GameState state) {}
     public string Name {get{return this.name;}}
     public string Description {get{return this.description;}}
-    public interaction(){}
+    public virtual void Interact(GameState state) {
+        // Если у объекта есть эффект — выполняем его
+        if (interactionEffect != null) {
+            interactionEffect.ApplyEffect(state);
+        } else {
+            Console.WriteLine($"Вы осматриваете {name}. {description}");
+        }
 
-}
+}}
 // классы
 
 public class GameState {
@@ -67,12 +73,13 @@ public class GameState {
     private Gamer player;
     private Entity entities;
     
-    public GameState(int turn, int day, int time, string[] roomsavailable, Location currentlocation, Dictionary<string, bool> flags){
+    public GameState(int turn, int day, int time, Location currentlocation, Dictionary<string, bool> flags){
+        this.turn = turn;
         this.currentLocation = currentlocation;
         this.day = day;
         this.time = time;
-        this.map = roomsavailable;
         this.flags = flags;
+        this.player = new Gamer(new Dictionary<string, ActionObject> {}, 100, 100, 10);
     }
 
     public Gamer Player
@@ -93,31 +100,37 @@ public class Location {
     private bool dark;
     private int lightLevel;
     private string[] description;
+    private Dictionary<string, GameObject> objects;
     private Dictionary<string, Location> connections;
-    public Location(int light, string[] description, Dictionary<string, Location> connections, bool dark) {
+    private Dictionary<string, Entity> entities;
+    public Location(int light, string[] description, bool dark) {
         this.lightLevel = light;
         this.description = description;
-        this.connections = connections;
         this.dark = dark;
     }
     public void processEvents(GameState state) {
-    foreach (var ev in this.events) {
+    foreach (var ev in this.Events) {
         ev.tick(state);
-    }
-}
-
+    }}
+    public bool Dark{get{return this.dark;} set{this.dark = value;}}
+    public int LightLevel{get{return this.lightLevel;} set{this.lightLevel = value;}}
+    public string[] Description{get{return this.description;} set{this.description = value;}}
+    public Dictionary<string, GameObject> Objects{get{return this.objects;} set{this.objects = value;}}
+    public Dictionary<string, Location> Connections{get{return this.connections;} set{this.connections = value;}}
+    public Dictionary<string, Entity> Entities{get{return this.entities;} set{this.entities = value;}} 
+    public List<GameEventBase> Events { get; set; } = new();
 }
 
 public class Entity: GameObject {
-    private Dictionary<string, Item> inventory;
+    private Dictionary<string, ActionObject> inventory;
     private string[] phrases;
-    public Entity(string name, string description, Dictionary<string, Item> inventory, string[] phrases) {
+    public Entity(string name, string description, Dictionary<string, ActionObject> inventory, string[] phrases) {
         this.name = name;
         this.description = description; 
         this.inventory = inventory;
         this.phrases = phrases;
     }
-    public Dictionary<string, iItem> Inventory{
+    public Dictionary<string, ActionObject> Inventory{
         get{return this.inventory;}
         set{this.inventory = value;}
     }
@@ -126,30 +139,29 @@ public class Entity: GameObject {
     }
 }
 public class ActionObject : GameObject {
-    private iEffect _effect;
+    private IEffect _effect;
     private string _interactionText;
 
-    public ActionObject(string name, string desc, string text, iEffect effect) : base(name, desc) {
+    public ActionObject(string name, string desc, string text, IEffect effect) : base(name, desc) {
         _effect = effect;
         _interactionText = text;
     }
 
-    public override void interact(GameState state) {
+    public override void Interact(GameState state) {
         Console.WriteLine(_interactionText);
-        _effect.applyEffect(state);
+        _effect.ApplyEffect(state);
     }
 }
-public class Item: GameObject {
-    private double weight;
-    public Item(int weight){
-        this.weight = weight;
-    }
-    public double Weight
-    {
-        get{return this.weight;}
-        set{this.weight = value;}
-    }
-}
+// public class ActionObject: GameObject {
+//     public ActionObject(int weight){
+//         this.weight = weight;
+//     }
+//     public double Weight
+//     {
+//         get{return this.weight;}
+//         set{this.weight = value;}
+//     }
+// }
 
 public class Obstacle: GameObject {
     private int level;
@@ -168,31 +180,20 @@ public class Trap: GameObject {
         this.damage = damage;
     }
     public void Damage(GameState state){
-        damage.applyEffect(state);
+        damage.ApplyEffect(state);
     }
 }
 
 public class Gamer {
-    private Dictionary<string, Item> inventory;
-    private double inventoryCapacity;
+    private Dictionary<string, ActionObject> inventory;
     private double health;
     private double healthMax;
     private double sanity;
-    public Gamer(Dictionary<string, Item> inventory, double inventorycapacity, double health, double healthmax, double sanity) {
+    public Gamer(Dictionary<string, ActionObject> inventory, double health, double healthmax, double sanity) {
         this.inventory = inventory;
-        this.inventoryCapacity = inventorycapacity;
         this.health = health;
         this.healthMax = healthmax;
         this.sanity = sanity;
-    }
-    public double InventoryWeight()
-    {
-        double weight = 0;
-        foreach (KeyValuePair elem in this.inventory)
-        {
-            weight += elem.value.weight;
-        }
-        return weight;
     }
     public double Health{
         get{return this.health;}
@@ -205,80 +206,14 @@ public class Gamer {
         set{if (value < 0){this.sanity = 0;}
             else {this.sanity = value;}}
     }
-    public Dictionary<string, Item> Inventory
+    public Dictionary<string, ActionObject> Inventory
     {
         get{return this.inventory;}
         set{this.inventory = value;}
     }
 }
-public class GeneratorObject : GameObject 
-{
-    private int _turnsToStart = -1; 
-    private iCondition _fastStartCond;
-
-    public GeneratorObject(string name, string desc, iCondition fastStart) : base(name, desc) 
-    {
-        _fastStartCond = fastStart;
-    }
-
-    public override void interact(GameState state) 
-    {
-        if (state.Flags["generator_on"]) {
-            Console.WriteLine("Генератор уже работает.");
-            return;
-        }
-
-        if (_fastStartCond.condition(state)) {
-            state.Flags["generator_on"] = true;
-            state.Flags["electricity"] = true;
-            Console.WriteLine("Благодаря инструментам вы мгновенно чините генератор! Свет включен.");
-        } else if (state.Player.Inventory.ContainsKey("рычаг")) {
-            _turnsToStart = 2;
-            Console.WriteLine("Вы дернули рычаг, но без инструментов генератору нужно время, чтобы прогреться...");
-        } else {
-            Console.WriteLine("Вам нужен рычаг, чтобы запустить это.");
-        }
-    }
-
-    public void tickGenerator(GameState state) 
-    {
-        if (_turnsToStart > 0) {
-            _turnsToStart--;
-            Console.WriteLine($"Генератор гудит... осталось тиков: {_turnsToStart}");
-            
-            if (_turnsToStart == 0) {
-                state.Flags["generator_on"] = true;
-                state.Flags["electricity"] = true;
-                Console.WriteLine("Генератор наконец-то затарахтел! Питание восстановлено.");
-            }
-        }
-    }
-     public override void update(GameState state) {
-        if (_turnsToStart > 0) {
-            _turnsToStart--;
-            Console.WriteLine($"Генератор заводится осталось ещё немного: {_turnsToStart}");
-            
-            if (_turnsToStart == 0) {
-                state.Flags["generator_on"] = true;
-                state.Flags["electricity"] = true;
-                Console.WriteLine("Генератор запустился! Питание восстановлено.");
-            }
-        }
-    }
-}
-
 
 //Команды
-public class GoToCommand: CommandBase {
-    private string direction;
-
-    public GoToCommand(string direction) {
-        this.direction = direction;
-    }
-    public override void executeCommand(GameState state) {
-        state.CurrentLocation = direction;
-    }
-}
 public class InteractCommand: CommandBase {
     private GameObject target;
 
@@ -289,7 +224,6 @@ public class InteractCommand: CommandBase {
     {}
 }
 // условия
-
 public class AndCondition: ConditionBase{
     iCondition cond1;
     iCondition cond2;
@@ -362,7 +296,7 @@ public class IsFlagCondition: ConditionBase{
 }
 public class CanEnterCondition: ConditionBase{
     private string roomName;
-    public IsFlagCondition(string roomName){
+    public CanEnterCondition(string roomName){
         this.roomName = roomName;
     }
     public override bool condition(GameState state){
@@ -374,62 +308,68 @@ public class CanEnterCondition: ConditionBase{
 public class AddItemEffect: EffectBase {
     private string itemName;
     private Item item;
-    public AddItemEffect(string name, Item item) {
+
+    public AddItemEffect(string name, ActionObject item) {
         this.item = item;
         this.itemName = name;
     }
-    public override void applyEffect(GameState state) {
-        state.Player.Inventory = state.Player.Inventory.Add(this.itemName, this.item);
-    }
-    public override void applyEffect(GameState state){
-        state.Entities.Inventory = state.Entities.Inventory(this.itemName, this.item);
+    public override void ApplyEffect(GameState state) {
+        state.Player.Inventory.Add(this.itemName, this.item);
     }
 }
 
 public class RemoveItemEffect: EffectBase {
     private string itemName;
-    public RemoveItemEffect(string name) {
+    private bool targetPlayer;
+    public RemoveItemEffect(string name, bool target = true) {
         this.itemName = name;
+        this.targetPlayer = target;
     }
-    public override void applyEffect(GameState state) {
-        state.Player.inventory.Remove(this.itemName);
+    public override void ApplyEffect(GameState state) {
+        if (this.targetPlayer) {
+            state.Player.Inventory.Remove(this.itemName);}
+        else
+        {
+            state.Entity.Inventory.Remove(this.itemName);
+        }
     }
 }
 
-public class DamageEffect: EffectBase {
+public class DamageEffect : EffectBase {
     private double amount;
-    public DamageEffect(double amount){
+    private bool targetPlayer; 
+
+    public DamageEffect(double amount, bool targetPlayer = true) {
         this.amount = amount;
+        this.targetPlayer = targetPlayer;
     }
-    public override void applyEffect(GameState state)
-    {
-        state.Player.Health = state.Player.Health - this.amount;
-    }
-    public override void applyEffect(GameState state){
-        state.Entities.Health = state.Entities.Health - this.amount;
+
+    public override void ApplyEffect(GameState state) {
+        if (targetPlayer) {
+            state.Player.Health -= amount;
+        } else {
+            // Предположим, Entity — это текущий враг в комнате
+            state.Entities.Health -= amount; 
+        }
     }
 }
 
-public class HealEffect: EffectBase{
+public class HealEffect : EffectBase {
     private double amount;
-    public HealEffect(double amount){
-        this.amount = amount;
-    }
-    public override void applyEffect(GameState state)
-    {
-        state.Player.Health = state.Player.Health + this.amount;
-    }
-}
+    private bool targetPlayer; 
 
-public class TemporaryDamageEffect: EffectBase{
-    private double time;
-    private DamageEffect damage;
-    public TemporaryDamageEffect(double amount, double time){
-        this.damage = new DamageEffect(amount);
-        this.time = time;
+    public DamageEffect(double amount, bool targetPlayer = true) {
+        this.amount = amount;
+        this.targetPlayer = targetPlayer;
     }
-    public override applyEffect(GameState state){
-        
+
+    public override void ApplyEffect(GameState state) {
+        if (targetPlayer) {
+            state.Player.Health += amount;
+        } else {
+            // Предположим, Entity — это текущий враг в комнате
+            state.Entities.Health += amount; 
+        }
     }
 }
 
@@ -438,7 +378,7 @@ public class SanityDownEffect: EffectBase {
     public SanityDownEffect(double amount){
         this.amount = amount;
     }
-    public override void applyEffect(GameState state)
+    public override void ApplyEffect(GameState state)
     {
         state.Player.Sanity = state.Player.Sanity - this.amount;
     }
@@ -449,7 +389,7 @@ public class SanityUpEffect: EffectBase{
     public SanityUpEffect(double amount){
         this.amount = amount;
     }
-    public override void applyEffect(GameState state)
+    public override void ApplyEffect(GameState state)
     {
         state.Player.Sanity = state.Player.Sanity + this.amount;
     }
@@ -465,127 +405,45 @@ public class SetFlagEffect : EffectBase {
 public class CombinedEffect : iEffect {
     private List<iEffect> effects;
     public CombinedEffect(List<iEffect> e) => effects = e;
-    public void applyEffect(GameState state) { 
-        foreach(var e in effects) e.applyEffect(state);}
+    public void ApplyEffect(GameState state) { 
+        foreach(var e in effects) e.ApplyEffect(state);}
 }
-
-// события
-public class RandomSanityEvent: GameEventBase {
-    private EffectBase effect;
-    private ConditionBase condition;
-    private string description;
-    public WorldEvent(string description, ConditionBase condition, EffectBase effect){
-        this.condition = condition;
-        this.effect = effect;
-        this.description = description;
-    }
-    public override void tick(GameState state) {
-        if (condition.condition(state)) {
-            effect.applyEffect(state);
-        }
-    }
-}
-
-// локации
-
-// public class Corridor: Location{
-//     private double difficulty;
-//     public Corridor(double difficullty, int light, string[] description, Dictionary<string, Location> doors, bool dark)
-//     {
-//         this.difficullty = difficullty;
-//         this.lightLevel = light;
-//         this.description = description;
-//         this.connections = connections;
-//         this.dark = dark;
-//     }
-//     public double Difficullty{
-//         get{return this.difficullty;}
-//         set{this.difficullty = value;}
-//     }
-// }
-
-// public class LivingRoom: Location{
-//     private Dictionary<string, Entity> furniture;
-//     public LivingRoom(Dictionary<string, Entity> furniture, int light, string[] description, Dictionary<string, Location> connections, bool dark){
-//         this.furniture = furniture;
-//         this.lightLevel = light;
-//         this.description = description;
-//         this.connections = connections;
-//         this.dark = dark;
-//     }
-//     public Dictionary<string, GameObject> Furniture{
-//         get{return this.furniture;}
-//         set{this.furniture = value;}
-//     }
-// }
-
-// public class Hall: Location{
-//     private Dictionary<string, Entity> people;
-//     public Hall(int light, string[] description, Dictionary<string,GameObject> connections, bool dark, Dictionary<string, Entity> people) {
-//         this.lightLevel = light;
-//         this.description = description;
-//         this.connections = connections;
-//         this.dark = dark;
-//         this.people = people;
-//     }
-//     public Dictionary<string, Entity> People{
-//         get{return this.people;}
-//         set{this.people = value;}
-//     }
-// }
 public class IsAtLocationCondition : ConditionBase {
     private string _locationName;
     public IsAtLocationCondition(string locationName) { _locationName = locationName; }
-    public override bool condition(GameState state) { return state.CurrentLocation == _locationName; }
+    public override bool condition(GameState state) { return state.CurrentLocation.Name == _locationName; }
 }
-public class WorldEvent : GameEventBase {
-    private iEffect _effect;
-    public WorldEvent(string name, iCondition cond, iEffect eff) : base(name, cond, eff) {
-        _effect = eff;
-    }
-    public void run(GameState state) {
-        _effect.applyEffect(state);
-    }
-    public override void tick(GameState state) {
-        if (base.condition_ref.condition(state)) {
-            this.run(state);
-        }
-    }
-}
+
 public class WinEffect : EffectBase {
-    public override void applyEffect(GameState state) {
+    public override void ApplyEffect(GameState state) {
         state.Flags["Escaped"] = true;
         Console.WriteLine("Вы снова здесь.");
     }
 }
 // команды
 public class MoveCommand : CommandBase {
-    private string _destinationId;
+    private string destinationId;
 
-    public MoveCommand(string destinationId) => _destinationId = destinationId;
+    public MoveCommand(string destinationId) {this.destinationId = destinationId;}
 
-    public override void executeCommand(GameState state) {
-        if (state.CurrentLocation.Exits.ContainsKey(_destinationId)) {
-            state.CurrentLocation = state.Map[_destinationId];
-            Console.WriteLine($"Вы перешли в: {state.CurrentLocation.Name}");
-        } else {
-            Console.WriteLine("Вы не можете туда пройти.");
+    public override void executeCommand(GameState state)
+    {
+        if (state.CurrentLocation.Connections.ContainsKey(this.destinationId))
+        {
+            state.CurrentLocation = state.CurrentLocation.Connections[destinationId];
         }
+        else {Console.WriteLine("Такой комнаты тут нет");}
     }
 }
 
 public class InteractCommand : CommandBase {
-    private string _targetName;
+    private string targetName;
 
-    public InteractCommand(string targetName) => _targetName = targetName;
+    public InteractCommand(string targetName) {this.targetName = targetName;}
 
     public override void executeCommand(GameState state) {
-        var obj = state.CurrentLocation.Objects.Find(o => o.Name.ToLower() == _targetName.ToLower());
-        if (obj != null) {
-            obj.interact(state);
-        } else {
-            Console.WriteLine("Я не вижу здесь этого.");
-        }
+        if (state.Objects.ContainsKey(this.targetName)){state.Objects[targetName].Interact(state);}
+        else {Console.WriteLine("Такого тут нет");}
     }
 }
 
@@ -595,8 +453,8 @@ public class UseItemCommand : CommandBase {
     public UseItemCommand(string itemName) => _itemName = itemName;
 
     public override void executeCommand(GameState state) {
-        if (state.Player.Inventory.TryGetValue(_itemName, out Item item)) {
-            item.interact(state); 
+        if (state.Player.Inventory.TryGetValue(_itemName, out ActionObjet item)) {
+            item.Interact(state); 
         } else {
             Console.WriteLine("У вас нет этого предмета.");
         }
@@ -608,94 +466,182 @@ public class InventoryCommand : CommandBase {
         Console.WriteLine("--- Ваш инвентарь ---");
         if (state.Player.Inventory.Count == 0) {
             Console.WriteLine("Пусто.");
-        } else {
-            foreach (var item in state.Player.Inventory.Keys) {
-                Console.WriteLine($"- {item}");
-            }
-            Console.WriteLine($"Вес: {state.Player.InventoryWeight()} / {state.Player.InventoryCapacity}");
+        } else {foreach (var item in state.Player.Inventory.Keys) {Console.WriteLine($"- {item}");}}
+    }
+}
+
+// создание мира
+public class Game{
+    private GameState state;
+    public void Init()
+    {   
+        // создание локаций и соединение
+        Location hall = new Location(3, "Вы в ярко освещенном холле", false);
+        Location storage = new Location(2, "Вы в хранилище", false);
+        Location generatorRoom = new Location(1, "Вы в тускло освещенной комнате с генераторомшкатулка для бижутерии", false);
+        Location darkcorridor = new Location(0, "Вы в тёмном коридоре", true);
+        Location room_1 = new Location(3, "Вы в номере 1", false);
+        Location room_2 = new Location(2, "Вы в номере 2", false);
+        Location room_3 = new Location(1, "Вы в номере 3", true);
+        Location exit = new Location(0, "Вы у выхода", false);
+        var map = new Dictionary<string, Location> {{"hall", hall}, {"storage", storage}, {"generatorroom", generatorRoom}, {"darkcorridor", darkcorridor}, {"room_1", room_1}, {"room_2", room_2}, {"room_3", room_3}};
+        hall.Connections = new Dictionary<string, Location> {{"storage", storage}, {"generatorroom", generatorRoom}, {"darkcorridor", darkcorridor}, {"room_1", room_1}, {"room_2", room_2}, {"room_3", room_3}};
+        storage.Connections = new Dictionary<string, Location> {{"hall", hall}};
+        generatorRoom.Connections = new Dictionary<string, Location> {{"hall", hall}};
+        room_1.Connections = new Dictionary<string, Location> {{"hall", hall}};
+        room_2.Connections = new Dictionary<string, Location> {{"hall", hall}};
+        room_3.Connections = new Dictionary<string, Location> {{"hall", hall}};
+        // Создание предметов
+        ActionObject torch = new ActionObject("torch", "освещает тёмные места");
+        ActionObject key = new ActionObject("key", "старый ключ. Должен что-то открывать");
+        ActionObject fuse = new ActionObject("fuse", "Предохранитель для Генератора");
+        ActionObject lever = new ActionObject("lever", "рычаг для генератора");
+        ActionObject relic_1 = new ActionObject("clock", "Старинные часы. На дне, сквозь слой патины можно разглядеть необычную печать...");
+        ActionObject relic_2 = new ActionObject("case", "Небольшая шкатулка. Внутри, под крышкой можно разглядеть необычную печать...");
+        ActionObject relic_3 = new ActionObject("knife", "Изящный нож. У основания клинка можно разглядеть необычную печать...");
+        // Расстановка предметов по комнатам
+        room_1.Objects.Add("torch", torch); room_1.Objects.Add("clock", relic_1);
+        room_2.Objects.Add("case", relic_2);
+        storage.Objects.Add("fuse", fuse); storage.Objects.Add("lever", lever);
+        // Создание сущностей
+        Entity chest = new Entity("chest", "Старый деревянный сундук", new Dictionary<string, ActionObject> {"knife", relic_3}, new string[] {"Этот старый сундук можно открыть"});
+        room_3.Entities.Add("chest", chest);
+        var guidePhrases = new[] {
+        "Добро пожаловать в отель.",
+        "Будьте осторожны в темном коридоре — без света там опасно.",
+        "Чтобы выйти, вам понадобится старый ключ, но он у Хранителя."};
+        Entity guide = new Entity("guide", "Старый проводник в пыльном фраке.", new Dictionary<string, Item>(), guidePhrases);
+        hall.Entities.Add("guide", guide);
+        var questRewardEffect = new CombinedEffect(new List<IEffect> {
+            new RemoveItemEffect("clock"),
+            new RemoveItemEffect("case"),
+            new RemoveItemEffect("knife"),
+            new AddItemEffect("key", new Item(1) {Name = "key", Description = "Тот самый ключ от выхода."}),
+            new SetFlagEffect("relics_collected", true)
+        });
+        var hasClock = new HasItemCondition("clock");
+        var hasCase = new HasItemCondition("case");
+        var hasKnife = new HasItemCondition("knife");
+        var hasRelics = new AndCondition(hasClock, new AndCondition(hasCase, hasKnife));
+        var keeperPhrases = new[] {
+            "Принеси мне три реликвии с печатями, и я дам тебе кое-что",
+            "Я вижу, ты собрал их все. Держи мой дар.",};
+
+        Entity keeper = new Entity(
+            "keeper", 
+            "Таинственный Хранитель", 
+            new Dictionary<string, Item>(), 
+            keeperPhrases
+        );
+        hall.Entities.Add("keeper", keeper);
+        // GameState
+        int turn = 1; int day = 1; int time = 10; Location currentlocation = hall;
+        Dictionary<string, bool> flags = new Dictionary<string, bool> {{ "relics_collected", false }, { "key_received", false }, { "generator_working", true }, { "light_on", false }, { "escaped", false }};
+        GameState state = new GameState(turn, day, time, currentlocation, flags);
+        }
+    public void Run()
+{
+    Console.WriteLine("Вы оказались в холле таинственного отеля.");
+    
+    while (!state.Flags["escaped"])
+    {
+        Console.WriteLine("\n" + new string('=', 30));
+        Console.WriteLine($"{state.CurrentLocation.Description}");
+        
+        // Список сущностей
+        if (state.CurrentLocation.Entities.Count > 0) 
+        {
+            Console.WriteLine($"Здесь находятся: {string.Join(", ", state.CurrentLocation.Entities.Keys)}");
+        }
+
+        // Список предметов
+        if (state.CurrentLocation.Objects.Count > 0)
+        {
+            Console.WriteLine($"На полу лежит: {string.Join(", ", state.CurrentLocation.Objects.Keys)}");
+        }
+
+        Console.WriteLine($"\nДоступные выходы: {string.Join(", ", state.CurrentLocation.Connections.Keys)}");
+        Console.Write("\nВведите команду (идти [место], взять [предмет], говорить [кто], инвентарь): ");
+        // парсер
+        string input = Console.ReadLine()?.ToLower() ?? "";
+        string[] parts = input.Split(' ', 2); // Разделяем на "команда" и "цель"
+        string command = parts[0];
+        string target = parts.Length > 1 ? parts[1] : "";
+
+        switch (command)
+        {
+            case "идти":
+                MoveTo(target);
+                break;
+            case "взять":
+                PickUp(target);
+                break;
+            case "говорить":
+                InteractWithEntity(target);
+                break;
+            case "инвентарь":
+                ShowInventory();
+                break;
+            default:
+                Console.WriteLine("Я вас не понял. Попробуйте: идти, взять, говорить или инвентарь.");
+                break;
         }
     }
+}
+// Логика перемещения
+private void MoveTo(string target)
+{
+    if (state.CurrentLocation.Connections.TryGetValue(target, out Location nextLocation))
+    {
+        // Проверка на темный коридор
+        if (nextLocation.IsDark && !state.Flags["light_on"] && !playerInventory.ContainsKey("torch"))
+        {
+            Console.WriteLine("В коридоре слишком темно! Вы не решились войти без света.");
+        }
+        else
+        {
+            state.CurrentLocation = nextLocation;
+            state.Turn++;
+        }
+    }
+    else
+    {
+        Console.WriteLine("Вы не можете туда пойти.");
+    }
+}
+// Логика взаимодействия
+private void InteractWithEntity(string target)
+{
+    if (state.CurrentLocation.Entities.TryGetValue(target, out Entity entity))
+    {
+        Console.WriteLine($"[{entity.Name}]: {entity.Phrases[0]}"); 
+        if (target == "keeper" && HasAllRelics()) 
+        {
+             Console.WriteLine("Хранитель забирает реликвии и даёт ключ.");
+             state.Flags["key_received"] = true;
+        }
+    }
+    else
+    {
+        Console.WriteLine("Здесь нет никого с таким именем.");
+    }
+}
+private void PickUp(string target)
+{
+    if (state.CurrentLocation.Objects.TryGetValue(target, out ActionObject item))
+    {
+        playerInventory.Add(target, item);
+        state.CurrentLocation.Objects.Remove(target);
+        Console.WriteLine($"Вы подобрали {target}.");
+    }
+    else {Console.WriteLine("Такого предмета здесь нет.");}
+}
 }
 class Program {
-    public static void Main()
-{
-    while (true)
+    static void Main() 
     {
-        // создание флагов
-        var flags = new Dictionary<string, bool> {
-            { "quest_clean", false }, { "quest_seals", false },
-            { "room1_clean", false }, { "room2_clean", false }, { "room3_clean", false },
-            { "generator_on", false }, { "electricity", true }, { "luck", false }, { "restart", false }
-        };
-        var player = new Gamer(new Dictionary<string, Item>(), 100, 100, 100, 100);
-        var map = new Dictionary<string, Location>();
-
-        // создание эффектов
-        var getSealEffect = new AddItemEffect("печать", new Item(1));
-        var getToolsEffect = new AddItemEffect("инструменты", new Item(2));
-        var getLeverEffect = new AddItemEffect("рычаг", new Item(1));
-        var darknessSequence = new CombinedEffect(new List<iEffect> {
-            new SetFlagEffect("electricity", false),
-            new SanityDownEffect(10) 
-        });
-
-        // создание локаций
-        Location hall = new Location(10, new[] { "Вы в холле. Здесь Хостесс и Уборщик." }, new Dictionary<string, GameObject>(), false);
-        Location r1 = new Location(10, new[] { "Комната 1. Пыльное кресло и сундук." }, new Dictionary<string, GameObject>(), false);
-        Location r2 = new Location(10, new[] { "Комната 2. Шкаф и сундук." }, new Dictionary<string, GameObject>(), false);
-        Location r3 = new Location(10, new[] { "Комната 3. Зеркало и сундук." }, new Dictionary<string, GameObject>(), false);
-        Location basement = new Location(5, new[] { "Сырой подвал с генератором." }, new Dictionary<string, GameObject>(), true);
-        Location corridor = new Location(0, new[] { "Бесконечный темный коридор." }, new Dictionary<string, GameObject>(), true);
-
-        // срздание объектов
-        r1.Objects.Add(new ActionObject("кресло", "Убрать кресло", "Вы убрали кресло и нашли инструменты!", 
-            new CombinedEffect(new List<iEffect> { getToolsEffect, new SetFlagEffect("room1_clean", true) })));
-        r1.Objects.Add(new ActionObject("сундук", "Открыть сундук", "Вы нашли первую печать.", getSealEffect));
-        r3.Objects.Add(new ActionObject("сундук", "Открыть сундук", "Вы нашли печать и рычаг!", 
-            new CombinedEffect(new List<iEffect> { getSealEffect, getLeverEffect })));
-        var genLogic = new GeneratorObject("генератор", "Старый агрегат", new AndCondition(new HasItemCondition("рычаг"), new HasItemCondition("инструменты")));
-        basement.Objects.Add(genLogic);
-
-        hall.Exits = new Dictionary<string, string> { {"1", "r1"}, {"2", "r2"}, {"3", "r3"}, {"вниз", "basement"}, {"выход", "corridor"} };
-        r1.Exits.Add("назад", "hall"); r2.Exits.Add("назад", "hall"); r3.Exits.Add("назад", "hall");
-        basement.Exits.Add("вверх", "hall");
-
-        map.Add("hall", hall); map.Add("r1", r1); map.Add("r2", r2); map.Add("r3", r3); 
-        map.Add("basement", basement); map.Add("corridor", corridor);
-
-        var state = new GameState(0, 1, 12, new string[]{"hall"}, hall, flags) { Player = player, Map = map };
-        while (state.Player.Health > 0 && state.Player.Sanity > 0 && !state.Flags["restart"])
-        {
-            Console.WriteLine($"\nHP: {state.Player.Health} | Sanity: {state.Player.Sanity} | Локация: {state.CurrentLocation.Name}");
-            Console.WriteLine(string.Join(" ", state.CurrentLocation.Description));
-            if (state.Flags["room1_clean"] && state.Flags["room2_clean"] && state.Flags["room3_clean"])
-                state.Flags["luck"] = true;
-            if (state.CurrentLocation == corridor) {
-                double damage = state.Flags["luck"] ? 10 : 20;
-                if (!state.Player.Inventory.ContainsKey("фонарик")) {
-                    state.Player.Health -= damage;
-                    Console.WriteLine($"Тьма наносит урон - {damage} HP");
-                }
-            }
-            // реализация команд
-            Console.Write("> ");
-            var input = Console.ReadLine().ToLower().Split(' ');
-            if (input[0] == "exit") break;
-            CommandBase command = input[0] switch {
-                "go" => new MoveCommand(input[1]),
-                "take" or "use" => new InteractCommand(input[1]),
-                "inv" => new InventoryCommand(),
-                _ => null
-            };
-            command?.executeCommand(state);
-            foreach (var obj in state.CurrentLocation.Objects) {
-                obj.update(state);
-            }
-            if (state.CurrentLocation == corridor && input[0] == "open") state.Flags["restart"] = true;
-        }
-
-        Console.WriteLine("\n--- ИГРА ПЕРЕЗАГРУЖАЕТСЯ ---");
+        Game myGame = new Game();
+        myGame.Init();
+        myGame.Run();
     }
 }
-}
-
